@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>D3: Loading GeoJSON data and generating SVG paths</title>
+        <script type="text/javascript" src="../d3/d3.js"></script>
+        <script src="//code.jquery.com/jquery-1.10.2.js"></script>
+        
+        <style type="text/css">
+
+        </style>
+    </head>
+    <body>
+
+        
+
+        <p><%= @openSecretsData['response'] %></p>
+
+        <script type="text/javascript">
+        //congress API = e2b85ac8d906b8d0941ae882c42337ac:1:55546544
+        //opensecrets API = 5ec968f2aea2ff0451baa3f1ef8ce294
+
+        //Width and height
+        var w = 1200;
+        var h = 800;
+        //keep track of which state is clicked
+        var active = d3.select(null);
+        var stateSelected = false;
+        var thisState;
+        var membersArray = [];
+        var selectedMembers = [];
+
+        //projection 3d space onto 2d surface
+        var projection = d3.geo.albersUsa()
+                    .translate([w/2, h/2])
+                    .scale([1500]);
+
+        //test other projection
+        var proj2 = d3.geo.albersUsa()
+                    .translate([w/2, h/2])
+                    .scale([500]);
+
+        //Define default path generator
+        var path = d3.geo.path()
+            .projection(projection);
+
+        //Create SVG element
+        var svg = d3.select("body")
+                    .append("svg")
+                    .attr("width", w)
+                    .attr("height", h)
+                    .attr("font-family", "sans-serif")
+                    .attr("font-size", "18px")
+                    .attr("fill", "#FFD658");
+
+        //scale with data value as input, returns colors
+        var color = d3.scale.quantize()
+                    .range([
+                    "rgb(237,248,233)",
+                    "rgb(186,228,179)",
+                    "rgb(116,196,118)",
+                    "rgb(49,163,84)",
+                    "rgb(0,109,44)"
+                    ]);
+
+
+        //load in opensecrests
+        // var opensecretsAPI = "http://www.opensecrets.org/api/?method=candContrib&cid=N00007360&cycle=2014&output=json&apikey=5ec968f2aea2ff0451baa3f1ef8ce294"
+        // d3.json(opensecretsAPI, function(error, json){
+        //     if(error){
+        //         return console.warn(error);
+        //     }
+        //     d3.select("body").selectAll("div")
+        //         .data(json.response)
+        //         .enter()
+        //         .append("div")
+
+        // })
+        // .header("Content-Type", "application/json");
+
+        //load in the congress API
+        // var congressAPIURL = "http://api.nytimes.com/svc/politics/v3/us/legislative/congress/members/B000444.json?api-key=e2b85ac8d906b8d0941ae882c42337ac:1:55546544";
+        var congressAPIURL = "http://api.nytimes.com/svc/politics/v3/us/legislative/congress/113/senate/members/current.json?api-key=e2b85ac8d906b8d0941ae882c42337ac:1:55546544";
+        d3.json(congressAPIURL, function(error, json){
+            if (error) {
+                alert("crap");
+                return console.warn(error);
+            }
+                
+            //var senateMembers = json.results;
+            d3.select("body").selectAll("div")
+                .data(json.results)
+                .enter()
+                .append("div")
+                .text(function(d){
+                    membersArray = d.members;
+                    
+                    for(var i=0; i < membersArray.length; i++){
+                        console.log(membersArray[i].first_name + " " + membersArray[i].last_name + " of " + membersArray[i].state);
+                    }
+                })
+                ;
+        })
+        .header("Content-Type", "application/json");
+
+        //Load in GeoJSON data
+        d3.json("us-states_abbrev.json", function(json) {
+            svg.selectAll("path")
+                .data(json.features)
+                .enter()
+                .append("path")
+                .attr("d", path)
+                .style("fill", function(d) {
+
+                    //Get data value
+                    var value = d.properties.value;
+                    
+                    if (value) {
+                        //If value exists…
+                        return color(value);
+                    } else {
+                        //If value is undefined…
+                        return "steelblue";
+                    }
+                })
+                .on("mouseover", function(d){ //on hover change the coler of the state
+                	//if the class is not "active", change color to orange
+                	if(d3.select(this).attr("class") != "active"){
+                		d3.select(this)
+	                		.transition()
+	                		.style("fill", "#FFD658");
+                	}
+                })
+                .on("mouseout", function(d){
+                	d3.select(this)
+                		.transition()
+                		.style("fill", "steelblue")
+                })
+                .on("click", function(d){
+                    //console.log(d.properties.name);
+                    
+                    if(stateSelected === true){
+                        reset(this);
+                    }else{
+                        thisState = this;
+                        clicked(d, thisState);
+                    }
+
+                });
+                // })
+                // .on("mouseout", function(d){
+                    
+                //     d3.select(this)
+                //         .transition()
+                //         .style("fill", "steelblue")
+                //         .attr("transform", "");
+                // });
+        });
+        
+        var firstMember;
+        var secondMember;
+
+        function clicked(d, thisState){
+            //check if magnified state is the one clicked
+            //reset map if it is
+            stateSelected = true;
+            
+
+            //set active to current
+            active.classed("active", false);
+            active = d3.select(thisState).classed("active", true);
+
+            //magnify the state
+            var bounds = path.bounds(d),
+                        dx = bounds[1][0] - bounds[0][0],
+                        dy = bounds[1][1] - bounds[0][1],
+                        x = (bounds[0][0] + bounds[1][0]) / 2,
+                        y = (bounds[0][1] + bounds[1][1]) / 2,
+                        scale = .9 / Math.max(dx / w, dy / h),
+                        translate = [w / 2 - scale * x, h / 2 - scale * y];
+
+            //get rid of the other states
+            d3.selectAll("path")
+                .transition()
+                .duration(100)
+                .attr("transform", "translate(" + [w/2 , h/2]+ ")scale(0)");
+
+            //magify this state
+            d3.select(thisState)
+	            .transition()
+	            .duration(100)
+	            .style("fill", "steelblue")
+	            .attr("transform", "translate(" + translate + ")scale(" + scale + ")");
+            
+            //select the senators for the state clicked
+            selectSenators(d.properties.name);
+
+            //figure out which state is selected, then write names of senators
+
+            //set this to this
+            var firstMemberText = selectedMembers[0].first_name + " " + selectedMembers[0].last_name + " (" + selectedMembers[0].party + ")";
+            var secondMemberText = selectedMembers[1].first_name + " " + selectedMembers[1].last_name + " (" + selectedMembers[0].party + ")";
+            
+
+            //write the text in the middle of the state
+            firstMember = svg.append("text")
+                .text(firstMemberText)
+                .attr("x", w/2)
+                .attr("y", h/2)
+                .attr("text-anchor", "middle")
+                .attr("id", "firstMember")
+                .on("click", function(d){
+                    //firstMember = this;
+                    
+                    senatorDetails(selectedMembers[0]);
+
+                });
+
+            //info for the second senator
+            secondMember = svg.append("text")
+                .text(secondMemberText)
+                .attr("x", w/2)
+                .attr("y", h/2+20)
+                .attr("text-anchor", "middle")
+                .attr("id", "secondMember")
+                .on("click", function(d){
+                    //display senator info
+ 
+                });
+
+
+            //Test code
+            console.log(selectedMembers[0].first_name);
+            
+            
+
+        }
+
+        //TODO: change this to 1st senator function, need second function for second
+        //display single senator's information
+        function senatorDetails(selectedMember){
+
+            var votesWithParty = "Votes With Party: " + selectedMember.votes_with_party_pct + "%";
+            var missedVotesPct = "Miss votes: " + selectedMember.missed_votes_pct + "%";
+            //minimize everything
+            d3.selectAll("path")
+                .transition()
+                .attr("transform", "translate(" + [w/2 , h/2]+ ")scale(0)");
+
+            //transition senator name position
+            d3.select("#firstMember")
+            .transition()
+            .attr("x", 200);
+
+            d3.select("#secondMember")
+            .remove();
+
+            //display addition info for selected senate member
+            svg.append("text")
+                .transition()
+                .text(votesWithParty)
+                .attr("x", w/2+50)
+                .attr("y", h/2);
+
+            svg.append("text")
+                .transition()
+                .text(missedVotesPct)
+                .attr("x", w/2+50)
+                .attr("y", h/2+ 20);
+                //.attr("text-anchor", "middle");
+
+        }
+
+        function reset(thisState){
+            stateSelected = false;
+
+            active.classed("active", false);
+            active = d3.select(null);
+
+            //clear array
+            selectedMembers = []
+
+            //reset all the other states
+            d3.selectAll("path")
+                .transition()
+                .duration(100)
+                .style("fill", "steelblue")
+                .attr("transform", "");
+
+            svg.selectAll("text")
+                .remove();
+
+        }
+
+        //need function to figure out if selected state and api state match
+        //if so, then display their senators
+        function selectSenators(stateName){
+            for(var i=0; i<membersArray.length; i++) {
+                if(stateName === membersArray[i].state){
+                    selectedMembers.push(membersArray[i]);
+                }
+            }
+        }
+            
+        </script>
+    </body>
+</html>
